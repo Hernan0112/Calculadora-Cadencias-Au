@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora Cadencias Auteco</title>
+    
+    <!-- 1. Estilos Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        auteco: {
+                            blue: '#003DA5',
+                            red: '#E31837',
+                            gray: '#F3F4F6',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- 2. LIBRERÍAS (CDNJS - Más estable en redes corporativas) -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.10.3/Recharts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+    <style>
+        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f8fafc; display: flex; justify-content: center; align-items: center; z-index: 9999; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid #003DA5; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #error-display { display: none; padding: 20px; background: #fee2e2; color: #991b1a; border: 1px solid #f87171; margin: 20px auto; border-radius: 8px; font-family: monospace; max-width: 800px; }
+        /* ajuste para inputs numéricos */
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased">
+    
+    <div id="loader">
+        <div class="spinner"></div>
+        <p class="text-slate-600 font-medium">Iniciando sistema...</p>
+    </div>
+
+    <div id="error-display"></div>
+
+    <div id="root"></div>
+
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            document.getElementById('loader').style.display = 'none';
+            const el = document.getElementById('error-display');
+            el.style.display = 'block';
+            el.innerHTML = `<strong>Error del Sistema:</strong><br>${message}<br><small>Verifique su conexión o contacte a TI.</small>`;
+        };
+    </script>
+
+    <!--  lOGICA DE LA APP -->
+    <script type="text/babel">
+        try {
+            if (!window.React || !window.ReactDOM || !window.Recharts) throw new Error("Error cargando librerías base.");
+
+            const { useState, useMemo, useEffect } = React;
+            const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } = window.Recharts;
+
+            // --- ICONOS ---
+            const Icon = ({ children, className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>);
+            const Activity = ({ className }) => <Icon className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></Icon>;
+            const BarChart3 = ({ className }) => <Icon className={className}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></Icon>;
+            const Users = ({ className }) => <Icon className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
+            const Clock = ({ className }) => <Icon className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+            const Coffee = ({ className }) => <Icon className={className}><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></Icon>;
+            const Calendar = ({ className }) => <Icon className={className}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></Icon>;
+            const Calculator = ({ className }) => <Icon className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></Icon>;
+            const Package = ({ className }) => <Icon className={className}><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22v-9"/></Icon>;
+            const Star = ({ className }) => <Icon className={className}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></Icon>;
+
+            // --- DATA ---
+            const LineName = { L1: 'L1 CTG', L2: 'L2 CTG' };
+            const MOTORCYCLE_DATABASE = [
+                { id: '1', name: 'Apache 160 4V', maxCadence: 31, workContent: 110.3225806, line: LineName.L1 },
+                { id: '2', name: 'Apache 160 4V Fi', maxCadence: 27.10843373, workContent: 152.72, line: LineName.L1 },
+                { id: '3', name: 'Apache 200 4V', maxCadence: 28, workContent: 122.1428571, line: LineName.L1 },
+                { id: '4', name: 'Apache 200 Fi', maxCadence: 28, workContent: 122.1428571, line: LineName.L1 },
+                { id: '5', name: 'NEO 110', maxCadence: 31.88010899, workContent: 129.8615385, line: LineName.L1 },
+                { id: '6', name: 'Ntorq 125', maxCadence: 23.44454463, workContent: 176.5869231, line: LineName.L1 },
+                { id: '7', name: 'Raider 125', maxCadence: 41.45610068, workContent: 99.86467449, line: LineName.L1 },
+                { id: '8', name: 'Raider 125 Fi', maxCadence: 39.18159969, workContent: 105.6618421, line: LineName.L1 },
+                { id: '9', name: 'SPORT 100 ELS', maxCadence: 38.24615635, workContent: 87.85196529, line: LineName.L1 },
+                { id: '10', name: 'SPORT 100 KLS', maxCadence: 35.01113586, workContent: 97.68320611, line: LineName.L1 },
+                { id: '11', name: 'STRYKER 125 INDO', maxCadence: 26, workContent: 117.6923077, line: LineName.L1 },
+                { id: '12', name: '200 DUKE NG', maxCadence: 13, workContent: 180, line: LineName.L2 },
+                { id: '13', name: '200 DUKE WO', maxCadence: 14, workContent: 167.1428571, line: LineName.L2 },
+                { id: '14', name: '250 DUKE G3', maxCadence: 10, workContent: 210, line: LineName.L2 },
+                { id: '15', name: '390 ADV', maxCadence: 7.03539823, workContent: 281.4339623, line: LineName.L2 },
+                { id: '16', name: '390 DUKE G3', maxCadence: 9.31052123, workContent: 225.5512821, line: LineName.L2 },
+                { id: '17', name: 'Apache 160 4V (L2)', maxCadence: 16, workContent: 146.25, line: LineName.L2 },
+                { id: '18', name: 'Apache 160 4V Fi (L2)', maxCadence: 14.51612903, workContent: 144.6666667, line: LineName.L2 },
+                { id: '19', name: 'Apache 200 4V (L2)', maxCadence: 14, workContent: 167.1428571, line: LineName.L2 },
+                { id: '20', name: 'Apache 200 Fi (L2)', maxCadence: 14.27554652, workContent: 163.9166667, line: LineName.L2 },
+                { id: '21', name: 'DAZZ 110', maxCadence: 16, workContent: 127.5, line: LineName.L2 },
+                { id: '22', name: 'NEO 110 (L2)', maxCadence: 18.68806041, workContent: 112.3712121, line: LineName.L2 },
+                { id: '23', name: 'Ntorq 125 (L2)', maxCadence: 19.55770181, workContent: 107.3745791, line: LineName.L2 },
+                { id: '24', name: 'Ntorq 125 Fi (L2)', maxCadence: 17, workContent: 120, line: LineName.L2 },
+                { id: '25', name: 'Raider 125 SBT', maxCadence: 13.78713767, workContent: 152.3158795, line: LineName.L2 },
+                { id: '26', name: 'Raider 125 (L2)', maxCadence: 14.13818182, workContent: 140.0462963, line: LineName.L2 },
+                { id: '27', name: 'Svartpilen 250', maxCadence: 8, workContent: 262.5, line: LineName.L2 },
+                { id: '28', name: 'Svartpilen 401', maxCadence: 7, workContent: 282.8571429, line: LineName.L2 },
+                { id: '29', name: '390 ADV R', maxCadence: 6.301279947, workContent: 333.265625, line: LineName.L2 },
+                { id: '30', name: '390 SMC R', maxCadence: 6.301279947, workContent: 333.265625, line: LineName.L2 },
+                { id: '31', name: '390 ADV X', maxCadence: 5.477070202, workContent: 383.4166667, line: LineName.L2 },
+                { id: '32', name: '390 ENDURO R', maxCadence: 5.843575049, workContent: 359.3690476, line: LineName.L2 },
+                { id: '33', name: 'Ntorq 125 SBT (L2)', maxCadence: 19.55770181, workContent: 107.3745791, line: LineName.L2 },
+            ];
+
+            const DEFAULT_SHIFT_CONFIG = {
+                startTime: '06:00',
+                endTime: '14:00',
+                breaks: { am: 15, lunch: 30, pm: 15 },
+                workingDaysPerMonth: 24
+            };
+
+            const Logo = ({ className = "h-8" }) => (
+                <img src="./auteco.png" alt="Auteco Logo" className={`${className} object-contain`} 
+                     onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerHTML += '<span class="text-auteco-blue font-bold text-lg">auteco</span>'; }} />
+            );
+
+            // --- CONFIGURACI0N DE TURNO ---
+            const ShiftSettings = ({ config, onChange }) => {
+                const calculateAvailableTime = useMemo(() => {
+                    const start = config.startTime.split(':').map(Number);
+                    const end = config.endTime.split(':').map(Number);
+                    let total = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
+                    if (total < 0) total += 24 * 60;
+                    return total - (config.breaks.am + config.breaks.lunch + config.breaks.pm);
+                }, [config]);
+
+                const handleChange = (field, value) => onChange({ ...config, [field]: value });
+                const handleBreak = (field, value) => onChange({ ...config, breaks: { ...config.breaks, [field]: value } });
+
+                return (
+                    <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
+                        <h2 className="text-xl font-bold text-slate-800 flex items-center mb-4 border-b pb-2">
+                            <Clock className="w-5 h-5 mr-2 text-auteco-blue" /> Configuración de Turno
+                        </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            {/* Horario */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-600 block">Horario de Trabajo</label>
+                                <div className="flex gap-2">
+                                    <input type="time" value={config.startTime} onChange={e=>handleChange('startTime',e.target.value)} className="border p-2 rounded w-full"/>
+                                    <input type="time" value={config.endTime} onChange={e=>handleChange('endTime',e.target.value)} className="border p-2 rounded w-full"/>
+                                </div>
+                            </div>
+                            {/* descansos con etiquetas claras */}
+                            <div className="space-y-2 col-span-2">
+                                <label className="text-sm font-medium text-slate-600 block flex items-center"><Coffee className="w-4 h-4 mr-1"/> Tiempos de Parada (min)</label>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <span className="text-xs text-slate-500 block mb-1">Merienda AM</span>
+                                        <input type="number" value={config.breaks.am} onChange={e=>handleBreak('am', +e.target.value)} className="border p-2 rounded w-full"/>
+                                    </div>
+                                    <div>
+                                        <span className="text-xs text-slate-500 block mb-1">Almuerzo</span>
+                                        <input type="number" value={config.breaks.lunch} onChange={e=>handleBreak('lunch', +e.target.value)} className="border p-2 rounded w-full"/>
+                                    </div>
+                                    <div>
+                                        <span className="text-xs text-slate-500 block mb-1">Merienda PM</span>
+                                        <input type="number" value={config.breaks.pm} onChange={e=>handleBreak('pm', +e.target.value)} className="border p-2 rounded w-full"/>
+                                    </div>
+                                </div>
+                            </div>
+                            {/* Días */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-600 block flex items-center"><Calendar className="w-4 h-4 mr-1"/> Días/Mes</label>
+                                <input type="number" value={config.workingDaysPerMonth} onChange={e=>handleChange('workingDaysPerMonth', +e.target.value)} className="border p-2 rounded w-full"/>
+                            </div>
+                        </div>
+                        <div className="mt-4 bg-blue-50 text-blue-800 p-3 rounded text-sm flex justify-between font-medium">
+                            <span>Tiempo Disponible Diario: {calculateAvailableTime} min</span><span>Efectivo: {(calculateAvailableTime/60).toFixed(1)} hrs</span>
+                        </div>
+                    </div>
+                );
+            };
+
+            // --- SECC SIMULAD0R ---
+            const CadenceSimulator = ({ models, shiftConfig, availableMinutes }) => {
+                const [modelId, setModelId] = useState('');
+                const [personnel, setPersonnel] = useState(0);
+                const [target, setTarget] = useState(0);
+                const model = useMemo(() => models.find(m => m.id === modelId), [models, modelId]);
+
+                useEffect(() => {
+                    if (model) {
+                        if (personnel === 0) setPersonnel(20);
+                        if (target === 0) setTarget(model.maxCadence);
+                    }
+                }, [model]);
+
+                const sim = useMemo(() => {
+                    if (!model || target <= 0) return null;
+                    const req = (target * model.workContent) / 60;
+                    const delta = req - personnel;
+                    return { req, delta, takt: 3600/target, daily: target*(availableMinutes/60), monthly: target*(availableMinutes/60)*shiftConfig.workingDaysPerMonth };
+                }, [model, target, personnel, availableMinutes, shiftConfig]);
+
+                const chartData = useMemo(() => sim ? [
+                    { name: 'Actual', Personal: personnel, Cadencia: (personnel*60)/model.workContent },
+                    { name: 'Simulado', Personal: sim.req, Cadencia: target }
+                ] : [], [sim, personnel, target, model]);
+
+                return (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-lg border shadow-sm">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Calculator className="w-5 h-5 mr-2 text-auteco-red"/> Parámetros</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Modelo</label>
+                                    <select className="w-full border p-2 rounded" value={modelId} onChange={e=>setModelId(e.target.value)}>
+                                        <option value="">-- Seleccionar --</option>
+                                        {models.map(m => <option key={m.id} value={m.id}>{m.name} ({m.line})</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Personal Actual en Línea</label>
+                                    <input type="number" className="w-full border p-2 rounded" value={personnel} onChange={e=>setPersonnel(+e.target.value)}/>
+                                </div>
+                                <div className="border-t pt-4">
+                                    <label className="block text-sm font-bold text-auteco-blue mb-1">Cadencia Objetivo (Motos/Hora)</label>
+                                    <input type="number" className="w-full border border-auteco-blue p-2 rounded text-lg font-bold" value={target} onChange={e=>setTarget(+e.target.value)}/>
+                                    {model && <p className="text-xs text-slate-500 mt-1">Máx. Histórico: {model.maxCadence}</p>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-span-1 md:col-span-2 space-y-4">
+                            {sim ? (
+                                <>
+                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="bg-blue-50 p-4 rounded border-blue-100">
+                                            <div className="text-sm text-blue-800 font-bold flex items-center"><Users className="w-4 h-4 mr-2"/> Personal Req.</div>
+                                            <div className="text-2xl font-bold">{sim.req.toFixed(2)}</div>
+                                            <div className={sim.delta>0?"text-red-600 text-xs":"text-green-600 text-xs"}>{sim.delta>0?`+${sim.delta.toFixed(1)}`:`${sim.delta.toFixed(1)}`} vs Actual</div>
+                                        </div>
+                                        <div className="bg-green-50 p-4 rounded border-green-100">
+                                            <div className="text-sm text-green-800 font-bold flex items-center"><Clock className="w-4 h-4 mr-2"/> Takt Time</div>
+                                            <div className="text-2xl font-bold">{sim.takt.toFixed(1)}s</div>
+                                        </div>
+                                        <div className="bg-purple-50 p-4 rounded border-purple-100">
+                                            <div className="text-sm text-purple-800 font-bold flex items-center"><Package className="w-4 h-4 mr-2"/> Diaria</div>
+                                            <div className="text-2xl font-bold">{Math.floor(sim.daily)}</div>
+                                        </div>
+                                        <div className="bg-orange-50 p-4 rounded border-orange-100">
+                                            <div className="text-sm text-orange-800 font-bold flex items-center"><Calendar className="w-4 h-4 mr-2"/> Mensual</div>
+                                            <div className="text-2xl font-bold">{Math.floor(sim.monthly).toLocaleString()}</div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-4 rounded border shadow-sm h-64">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={chartData}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false}/>
+                                                <XAxis dataKey="name"/>
+                                                <YAxis yAxisId="l" stroke="#003DA5"/>
+                                                <YAxis yAxisId="r" orientation="right" stroke="#E31837"/>
+                                                <Tooltip contentStyle={{background:'#fff', borderRadius:'8px'}}/>
+                                                <Bar yAxisId="l" dataKey="Personal" fill="#003DA5" name="Personal" barSize={40}/>
+                                                <Bar yAxisId="r" dataKey="Cadencia" fill="#E31837" name="Cadencia" barSize={40}/>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center border-2 border-dashed rounded text-slate-400 p-10">
+                                    <Calculator className="w-12 h-12 mb-2 opacity-30"/>
+                                    <p>Seleccione un modelo para simular</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            // --- SECCI0N: CAPACIDAD ---
+            const CapacityAnalysis = ({ models, shiftConfig, availableMinutes }) => {
+                const [line, setLine] = useState(LineName.L1);
+                const [starId, setStarId] = useState('');
+                const [target, setTarget] = useState(0);
+                const lineModels = useMemo(() => models.filter(m => m.line === line), [models, line]);
+                const star = useMemo(() => models.find(m => m.id === starId), [models, starId]);
+                
+                const data = useMemo(() => {
+                    if (!star || target <= 0) return [];
+                    const fixedP = (target * star.workContent) / 60;
+                    return lineModels.map(m => ({
+                        name: m.name,
+                        workContent: m.workContent, // Incluido Work Content
+                        cadence: (60 * fixedP) / m.workContent,
+                        monthly: ((60 * fixedP) / m.workContent) * (availableMinutes/60) * shiftConfig.workingDaysPerMonth
+                    }));
+                }, [star, target, lineModels, availableMinutes, shiftConfig]);
+
+                return (
+                    <div className="space-y-6">
+                        <div className="bg-indigo-50 p-4 rounded-lg flex flex-col md:flex-row gap-4 items-center">
+                            <div className="flex-1 w-full">
+                                <label className="font-bold text-indigo-900 block mb-1">Línea</label>
+                                <div className="flex gap-2">
+                                    <button onClick={()=>setLine(LineName.L1)} className={`px-4 py-2 rounded ${line===LineName.L1?'bg-auteco-blue text-white':'bg-white'}`}>{LineName.L1}</button>
+                                    <button onClick={()=>setLine(LineName.L2)} className={`px-4 py-2 rounded ${line===LineName.L2?'bg-auteco-blue text-white':'bg-white'}`}>{LineName.L2}</button>
+                                </div>
+                            </div>
+                            <div className="flex-1 w-full">
+                                <label className="font-bold text-indigo-900 block mb-1 flex items-center"><Star className="w-4 h-4 mr-1 text-yellow-500"/> Modelo Estrella</label>
+                                <select className="w-full border p-2 rounded" value={starId} onChange={e=>setStarId(e.target.value)}>
+                                    <option value="">-- Seleccionar --</option>
+                                    {lineModels.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="flex-1 w-full">
+                                <label className="font-bold text-indigo-900 block mb-1">Cadencia Objetivo (M/h)</label>
+                                <input type="number" className="w-full border p-2 rounded" value={target||''} onChange={e=>setTarget(+e.target.value)}/>
+                            </div>
+                        </div>
+                        {data.length > 0 && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="bg-white p-4 rounded border shadow-sm h-96">
+                                    <h3 className="font-bold text-slate-800 mb-2">Proyección</h3>
+                                    <ResponsiveContainer width="100%" height="90%">
+                                        <BarChart data={data} layout="vertical" margin={{left:40, right:20}}>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false}/>
+                                            <XAxis type="number"/>
+                                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize:10}}/>
+                                            <Tooltip formatter={v=>v.toFixed(1)}/>
+                                            <Bar dataKey="cadence" fill="#003DA5" name="Cadencia (M/h)" radius={[0,4,4,0]}/>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="bg-white p-4 rounded border shadow-sm h-96 overflow-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-slate-50 text-left">
+                                            <tr>
+                                                <th className="p-2">Modelo</th>
+                                                <th className="p-2 text-right">Work Content</th>
+                                                <th className="p-2 text-right">Cadencia</th>
+                                                <th className="p-2 text-right">Mensual</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {data.map(r=>(
+                                                <tr key={r.name} className={r.name===star?.name?'bg-yellow-50':''}>
+                                                    <td className="p-2 font-medium">
+                                                        {r.name}
+                                                        {r.name===star?.name && <span className="ml-1 text-xs text-yellow-600">★</span>}
+                                                    </td>
+                                                    <td className="p-2 text-right text-slate-600">{r.workContent.toFixed(2)}</td>
+                                                    <td className="p-2 text-right font-bold text-auteco-blue">{r.cadence.toFixed(1)}</td>
+                                                    <td className="p-2 text-right">{Math.floor(r.monthly).toLocaleString()}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // --- SECCIÓN: SOPORTE ---
+            const SupportAreaCalculator = () => {
+                const [area, setArea] = useState('');
+                const [curL, setCurL] = useState(0);
+                const [futL, setFutL] = useState(0);
+                const [curA, setCurA] = useState(0);
+                
+                const res = useMemo(() => {
+                    if (!curL || !futL || !curA) return null;
+                    const factor = futL / curL;
+                    const req = Math.ceil(curA * factor);
+                    return { factor, req, delta: req - curA };
+                }, [curL, futL, curA]);
+
+                return (
+                    <div className="bg-white p-6 rounded-lg border shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                            <h3 className="font-bold text-lg text-slate-800">Dimensionamiento Soporte</h3>
+                            <div>
+                                <label className="text-sm font-medium text-slate-700 block mb-1">Área</label>
+                                <select className="w-full border p-2 rounded" value={area} onChange={e=>setArea(e.target.value)}>
+                                    <option value="">-- Área --</option>
+                                    {["Desempaque"].map(a=><option key={a} value={a}>{a}</option>)}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded border">
+                                <div>
+                                    <label className="text-xs text-slate-500 block mb-1">Personal Línea (Actual)</label>
+                                    <input type="number" className="border w-full p-2 rounded" value={curL||''} onChange={e=>setCurL(+e.target.value)}/>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-auteco-blue block mb-1">Personal Línea (Futuro)</label>
+                                    <input type="number" className="border w-full p-2 rounded bg-blue-50 border-blue-200" value={futL||''} onChange={e=>setFutL(+e.target.value)}/>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-slate-700 block mb-1">Personal Área Actual</label>
+                                <input type="number" className="border w-full p-2 rounded" value={curA||''} onChange={e=>setCurA(+e.target.value)}/>
+                            </div>
+                        </div>
+                        <div className="flex flex-col justify-center items-center bg-slate-50 rounded border p-4 text-center">
+                            {res ? (
+                                <>
+                                    <div className="text-2xl font-light text-slate-600">{(res.factor*100).toFixed(0)}% <span className="text-sm">Crecimiento</span></div>
+                                    <div className="mt-4 pt-4 border-t w-full">
+                                        <div className="text-5xl font-extrabold text-auteco-blue">{res.req}</div>
+                                        <div className="text-slate-500">Personas Req.</div>
+                                        <div className={res.delta>0?"text-red-500 font-bold":"text-green-600 font-bold"}>{res.delta>0?`+${res.delta}`:'Ok'}</div>
+                                    </div>
+                                </>
+                            ):<span className="text-slate-400">Ingrese datos</span>}
+                        </div>
+                    </div>
+                );
+            };
+
+            const App = () => {
+                const [config, setConfig] = useState(DEFAULT_SHIFT_CONFIG);
+                const [tab, setTab] = useState('simulator');
+                const [filter, setFilter] = useState('ALL');
+
+                const mins = useMemo(() => {
+                    const s = config.startTime.split(':').map(Number), e = config.endTime.split(':').map(Number);
+                    let t = (e[0]*60+e[1]) - (s[0]*60+s[1]);
+                    if(t<0) t+=24*60;
+                    return t - (config.breaks.am + config.breaks.lunch + config.breaks.pm);
+                }, [config]);
+
+                const filtered = useMemo(() => filter==='ALL' ? MOTORCYCLE_DATABASE : MOTORCYCLE_DATABASE.filter(m=>m.line===filter), [filter]);
+
+                return (
+                    <div className="min-h-screen bg-slate-100 pb-12">
+                        <header className="bg-white border-b sticky top-0 z-10 shadow-sm">
+                            <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Logo className="h-8"/>
+                                    <span className="font-bold text-slate-800 text-lg hidden sm:block">Calculadora Cadencias</span>
+                                </div>
+                            </div>
+                        </header>
+                        <main className="max-w-7xl mx-auto px-4 py-8">
+                            {tab !== 'support' && <ShiftSettings config={config} onChange={setConfig} />}
+                            
+                            <div className="flex space-x-4 border-b mb-6 overflow-x-auto">
+                                <button onClick={()=>setTab('simulator')} className={`py-2 px-4 border-b-2 font-medium flex items-center whitespace-nowrap ${tab==='simulator'?'border-auteco-blue text-auteco-blue':'border-transparent text-slate-500'}`}><Activity className="w-4 h-4 mr-2"/> Simulador</button>
+                                <button onClick={()=>setTab('capacity')} className={`py-2 px-4 border-b-2 font-medium flex items-center whitespace-nowrap ${tab==='capacity'?'border-auteco-blue text-auteco-blue':'border-transparent text-slate-500'}`}><BarChart3 className="w-4 h-4 mr-2"/> Capacidad</button>
+                                <button onClick={()=>setTab('support')} className={`py-2 px-4 border-b-2 font-medium flex items-center whitespace-nowrap ${tab==='support'?'border-auteco-blue text-auteco-blue':'border-transparent text-slate-500'}`}><Users className="w-4 h-4 mr-2"/> Áreas Soporte</button>
+                            </div>
+
+                            {tab === 'simulator' && (
+                                <>
+                                    <div className="flex justify-end mb-4">
+                                        <select className="bg-white border p-2 rounded shadow-sm" value={filter} onChange={e=>setFilter(e.target.value)}>
+                                            <option value="ALL">Todas las Líneas</option>
+                                            <option value={LineName.L1}>{LineName.L1}</option>
+                                            <option value={LineName.L2}>{LineName.L2}</option>
+                                        </select>
+                                    </div>
+                                    <CadenceSimulator models={filtered} shiftConfig={config} availableMinutes={mins} />
+                                </>
+                            )}
+                            {tab === 'capacity' && <CapacityAnalysis models={MOTORCYCLE_DATABASE} shiftConfig={config} availableMinutes={mins} />}
+                            {tab === 'support' && <SupportAreaCalculator />}
+                        </main>
+                        <footer className="text-center text-slate-400 text-sm py-6">© 2025 Auteco. Creador: Hernán José Ortiz Romani.</footer>
+                    </div>
+                );
+            };
+
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+            
+            document.getElementById('loader').style.display = 'none';
+
+        } catch (err) {
+            console.error(err);
+            document.getElementById('loader').style.display = 'none';
+            const el = document.getElementById('error-display');
+            el.style.display = 'block';
+            el.innerHTML = `<strong>Error de Inicialización:</strong><br>${err.message}`;
+        }
+    </script>
+</body>
+</html>

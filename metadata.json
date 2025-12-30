@@ -1,0 +1,5 @@
+{
+  "name": "Calculadora Cadencias Au",
+  "description": "Industrial engineering tool for Auteco assembly lines to calculate cadence, takt time, personnel requirements, and capacity analysis based on work content.",
+  "requestFramePermissions": []
+}
